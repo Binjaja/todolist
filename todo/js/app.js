@@ -80,13 +80,34 @@
     if (!t) return;
     Notify.sync(S);                                   // titre vide (que des codes) : on ne fait rien
     editingId = null; input.value = ''; cancelBtn.hidden = true; input.placeholder = 'Nouvelle tâche…  demain &bleu !18:30 €';
-    render(); goToPane(t.date ? 0 : 1);
+    render(); revealTask(t.id); goToPane(t.date ? 0 : 1);
   });
 
   document.addEventListener('click', e => {
     const li = e.target.closest('#panes li[data-id]'); if (!li) return;
     if (e.target.closest('.chk')) { mutate(li.dataset.id, () => S.toggleDone(li.dataset.id, now())); render(); } else startEdit(li.dataset.id);
   });
+
+  // Fait défiler verticalement l'écran concerné jusqu'à la tâche, si elle n'est pas visible.
+  function revealTask(id) {
+    const li = document.querySelector('#panes li[data-id="' + id + '"]'); if (!li) return;
+    const pane = li.closest('.pane');
+    const top = li.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop;
+    if (top < pane.scrollTop) pane.scrollTop = Math.max(0, top - 16);
+    else if (top + li.offsetHeight > pane.scrollTop + pane.clientHeight) pane.scrollTop = top + li.offsetHeight - pane.clientHeight + 16;
+  }
+
+  // Clavier iOS : l'app prend exactement la taille de la zone visible. La liste se réduit au-dessus du
+  // clavier et la barre reste collée dessus, sans que la page remonte.
+  const vv = window.visualViewport;
+  if (vv) {
+    const fit = () => {
+      document.body.style.setProperty('--vh', vv.height + 'px');
+      document.body.style.transform = 'translateY(' + vv.offsetTop + 'px)';
+      document.body.classList.toggle('kb', vv.height < window.innerHeight - 120);
+    };
+    vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+  }
 
   // ---------- Deux écrans ----------
   const panes = $('#panes');

@@ -1,8 +1,8 @@
 :root{--bg:#fff;--fg:#1c1c1e;--mute:#8e8e93;--line:#e5e5ea;--bar:#f2f2f7;--acc:#007aff;--card:#fff}
 @media (prefers-color-scheme:dark){:root{--bg:#000;--fg:#f2f2f7;--mute:#8e8e93;--line:#2c2c2e;--bar:#1c1c1e;--acc:#0a84ff;--card:#1c1c1e}}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;margin:0}
-body{display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--fg);
+html,body{height:100%;margin:0;overflow:hidden}
+body{position:fixed;top:0;left:0;right:0;height:var(--vh,100dvh);display:flex;flex-direction:column;background:var(--bg);color:var(--fg);
   font:17px/1.35 -apple-system,system-ui,sans-serif;padding-top:env(safe-area-inset-top)}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 
@@ -34,6 +34,7 @@ h1{margin:0;font-size:28px;font-weight:700;flex:1}
 .dot{flex:none;width:8px;height:8px;border-radius:50%;background:#e8710a}
 
 #bar{display:flex;align-items:center;gap:8px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:var(--bar);border-top:1px solid var(--line)}
+body.kb #bar{padding-bottom:8px}
 #in{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 14px;border-radius:20px;border:1px solid var(--line);background:var(--bg);color:var(--fg);outline:none}
 #go{flex:none;width:36px;height:36px;border-radius:50%;background:var(--acc);color:#fff;font-size:20px}
 #cancel{flex:none;width:32px;height:32px;border-radius:50%;background:var(--line);font-size:20px;line-height:1}

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><title>Test du parseur</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body{font:15px system-ui,sans-serif;max-width:760px;margin:20px auto;padding:0 12px}
+  input{width:100%;box-sizing:border-box;padding:10px;font-size:16px}
+  pre{background:#f3f3f3;padding:10px;border-radius:6px;overflow:auto}
+  .ok{color:#1a7f37}.ko{color:#c62828;font-weight:600}
+</style></head><body>
+<h2>Test du parseur</h2>
+<p>Essai libre (jour courant : <b id="today"></b>)</p>
+<input id="in" value="Ranger lessive demain &bleu !18:30 €" autofocus>
+<pre id="out"></pre>
+<h3>Tests automatiques <small>(aujourd'hui fixé au 04/11/2026)</small></h3>
+<div id="tests"></div>
+<script src="js/parser.js"></script><script src="js/tests.js"></script>
+<script>
+  const P = Parser, $ = id => document.getElementById(id);
+  $('today').textContent = P.logicalToday();
+  const live = () => { $('out').textContent = JSON.stringify(P.parse($('in').value), null, 2); };
+  $('in').addEventListener('input', live); live();
+
+  const rows = [];
+  TESTS.forEach(([text, exp]) => {
+    const got = P.parse(text, TODAY);
+    const bad = Object.keys(exp).filter(k => got[k] !== exp[k]);
+    rows.push([!bad.length, text, bad.length ? 'attendu ' + JSON.stringify(exp) + ' / obtenu ' + JSON.stringify(got) : '']);
+  });
+  ROUNDTRIPS.forEach(text => {
+    const a = P.parse(text, TODAY), b = P.parse(P.toText(a, TODAY), TODAY);
+    rows.push([JSON.stringify(a) === JSON.stringify(b), 'aller-retour : ' + text, P.toText(a, TODAY)]);
+  });
+  $('tests').innerHTML = rows.map(([ok, t, d]) => `<div class="${ok ? 'ok' : 'ko'}">${ok ? '✔' : '✘'} ${t} <small>${d}</small></div>`.replace(/</g, m => m)).join('');
+</script></body></html>

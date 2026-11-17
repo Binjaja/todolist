@@ -4,10 +4,10 @@
   const S = Store.createStore(), P = Parser;
   const $ = s => document.querySelector(s);
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-  const HEX = { rouge: '#d93025', orange: '#e8710a', jaune: '#b38f00', vert: '#1e8e3e', bleu: '#1a73e8', violet: '#8430ce', rose: '#d6336c', gris: '#5f6368' };
+  const HEX = { rouge: '#d93025', orange: '#e8710a', jaune: '#b38f00', vert: '#1e8e3e', bleu: '#1a73e8', violet: '#8430ce', rose: '#e056b0', gris: '#5f6368' };
   const now = () => new Date();
   const todayISO = () => P.logicalToday(now(), S.settings.rolloverHour);
-  let editingId = null, sortables = [];
+  let editingId = null, sortables = [], shownDay = null;
 
   // Applique une modification en annulant/reprogrammant le rappel ntfy associé.
   function mutate(id, fn) {
@@ -58,7 +58,55 @@
     list.forEach(t => un.append(taskRow(t)));
     if (list.length > 1) makeSortable(un);
     if (!list.length) un.append(el('li', 'empty-note', 'Aucune tâche sans date'));
+    renderRoutine(); shownDay = todayISO();
   }
+
+  // ---------- Routine ----------
+  function renderRoutine() {
+    const box = $('#routine'); box.replaceChildren();
+    const items = S.routineItems(), today = todayISO();
+    if (!items.length) { box.append(el('p', 'empty-note', 'Aucune habitude. Ajoute-en dans Menu → Routine.')); return; }
+    const nDone = items.filter(i => S.routineDone(i.id, today)).length;
+    box.append(el('div', 'sep', 'Aujourd’hui · ' + nDone + '/' + items.length));
+    const ul = el('ul', 'list');
+    items.forEach(i => {
+      const li = el('li', 'task rtask' + (S.routineDone(i.id, today) ? ' done' : ''));
+      li.dataset.rid = i.id; li.style.setProperty('--c', HEX[i.color]);
+      const chk = el('button', 'chk'); chk.type = 'button'; chk.setAttribute('aria-label', 'Valider aujourd’hui');
+      const txt = el('span', 'txt', i.name), total = S.routineTotal(i.id);
+      txt.append(el('span', 'sub', total + (total > 1 ? ' jours validés' : ' jour validé')));
+      li.append(chk, txt);
+      const st = S.routineStreak(i.id, now());
+      if (st > 0) li.append(el('span', 'meta', '🔥 ' + st));
+      ul.append(li);
+    });
+    box.append(ul, gridEl(items));
+  }
+
+  function gridEl(items) {
+    const g = el('div', 'grid'), hd = el('div', 'gh');
+    'LMMJVSD'.split('').forEach(c => hd.append(el('span', '', c))); g.append(hd);
+    S.routineGrid(now()).forEach(week => {
+      const w = el('div', 'gw');
+      week.forEach(c => {
+        const b = el('button', 'gc' + (c.today ? ' today' : '') + (c.future ? ' future' : ''));
+        b.type = 'button'; b.dataset.date = c.date; b.disabled = c.future;
+        b.append(el('span', '', String(P.toDate(c.date).getDate())));
+        const pts = el('div', 'pts');
+        c.ids.forEach(id => { const p = el('i', 'pt'); p.style.background = HEX[items.find(i => i.id === id).color]; pts.append(p); });
+        b.append(pts); w.append(b);
+      });
+      g.append(w);
+    });
+    return g;
+  }
+
+  $('#routine').addEventListener('click', e => {
+    const li = e.target.closest('li[data-rid]');
+    if (li) { S.toggleRoutine(li.dataset.rid, todayISO()); renderRoutine(); return; }
+    const c = e.target.closest('.gc');
+    if (c && !c.disabled) { showSheet('day', c.dataset.date); sheet.hidden = false; }
+  });
 
   // ---------- Saisie / modification ----------
   const input = $('#in'), cancelBtn = $('#cancel');
@@ -72,6 +120,19 @@
     input.placeholder = 'Nouvelle tâche…  demain &bleu !18:30 €'; render();
   }
   cancelBtn.addEventListener('click', stopEdit);
+
+  // Rangée de touches rapides (& ! : €), visible pendant la saisie. On empêche la perte de focus pour garder le clavier.
+  const keys = $('#keys');
+  input.addEventListener('focus', () => { keys.hidden = false; });
+  input.addEventListener('blur', () => { keys.hidden = true; });
+  ['pointerdown', 'mousedown'].forEach(ev => keys.addEventListener(ev, e => e.preventDefault()));
+  keys.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.k === 'close') { input.blur(); return; }
+    const ch = b.dataset.k, s = input.selectionStart, v = input.value;
+    const space = ch !== ':' && s > 0 && !/\s/.test(v[s - 1]) ? ' ' : '';   // les codes doivent être séparés par un espace
+    input.setRangeText(space + ch, s, input.selectionEnd, 'end'); input.focus();
+  });
 
   $('#bar').addEventListener('submit', e => {
     e.preventDefault();
@@ -114,7 +175,7 @@
   const goToPane = i => panes.scrollTo({ left: i * panes.clientWidth, behavior: 'smooth' });
   panes.addEventListener('scroll', () => {
     const i = Math.round(panes.scrollLeft / panes.clientWidth);
-    $('#title').textContent = i ? 'Sans date' : 'Agenda';
+    $('#title').textContent = ['Agenda', 'Sans date', 'Routine'][i] || 'Agenda';
     [...$('#dots').children].forEach((d, k) => d.classList.toggle('on', k === i));
   }, { passive: true });
   $('#dots').addEventListener('click', e => { const k = [...$('#dots').children].indexOf(e.target); if (k >= 0) goToPane(k); });
@@ -131,11 +192,11 @@
   }
   function button(cls, text, fn) { const b = el('button', cls, text); b.type = 'button'; b.onclick = fn; return b; }
 
-  function showSheet(view) {
+  function showSheet(view, arg) {
     card.replaceChildren();
     if (view === 'menu') {
       head('Menu');
-      [['history', 'Historique'], ['settings', 'Réglages'], ['backup', 'Sauvegarde (export / import)']]
+      [['routine', 'Routine (habitudes)'], ['history', 'Historique'], ['settings', 'Réglages'], ['backup', 'Sauvegarde (export / import)']]
         .forEach(([v, l]) => card.append(button('item', l, () => showSheet(v))));
     } else if (view === 'history') {
       head('Historique', true);
@@ -165,6 +226,31 @@
           status.textContent = (await Notify.testCancel(S)) ? 'Programmé puis annulé. Si rien n’arrive dans 2 minutes, l’annulation fonctionne.' : 'Échec : canal vide ou pas de connexion.';
         }));
       card.append(topic, b, status);
+    } else if (view === 'routine') {
+      head('Routine', true);
+      const redo = () => { renderRoutine(); showSheet('routine'); };
+      S.routineItems().forEach(it => {
+        const r = el('div', 'row wrap'), sel = el('select');
+        P.COLORS.forEach(c => sel.append(new Option(c, c, false, c === it.color)));
+        sel.style.color = HEX[it.color]; sel.onchange = () => { S.updateRoutine(it.id, { color: sel.value }); redo(); };
+        const nm = el('input'); nm.type = 'text'; nm.value = it.name; nm.onchange = () => { S.updateRoutine(it.id, { name: nm.value }); redo(); };
+        r.append(sel, nm, button('', '↑', () => { S.moveRoutine(it.id, -1); redo(); }), button('', '↓', () => { S.moveRoutine(it.id, 1); redo(); }),
+          button('del', 'Suppr.', () => { if (confirm('Retirer « ' + it.name + ' » ?')) { S.removeRoutine(it.id); redo(); } }));
+        card.append(r);
+      });
+      const add = el('div', 'row'), nw = el('input'); nw.type = 'text'; nw.placeholder = 'Nouvelle habitude (ex. Étirements)';
+      add.append(nw, button('', 'Ajouter', () => { if (S.addRoutine(nw.value, null, now())) redo(); }));
+      card.append(add, el('p', 'note', 'Supprimer une habitude la retire de l’écran et de la grille ; ses données restent dans la sauvegarde.'));
+    } else if (view === 'day') {
+      head(dayLabel(arg));
+      S.routineItems().forEach(it => {
+        const r = el('div', 'row'), dot = el('span', 'dsw'); dot.style.background = HEX[it.color];
+        const done = () => S.routineDone(it.id, arg), b = button('', done() ? '✔ Fait' : 'Pas fait', () => {
+          S.toggleRoutine(it.id, arg); renderRoutine(); showSheet('day', arg);
+        });
+        r.append(dot, el('span', 'txt', it.name), b); card.append(r);
+      });
+      if (!S.routineItems().length) card.append(el('p', 'note', 'Aucune habitude.'));
     } else if (view === 'backup') {
       head('Sauvegarde', true);
       const ta = el('textarea'); ta.spellcheck = false;
@@ -181,7 +267,7 @@
 
   // ---------- Démarrage et changement de jour ----------
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { S.rollover(now()); render(); Notify.sync(S); } });
-  setInterval(() => { if (S.rollover(now())) render(); Notify.sync(S); }, 60000);
+  setInterval(() => { if (S.rollover(now()) || todayISO() !== shownDay) render(); Notify.sync(S); }, 60000);
   S.rollover(now()); render(); Notify.sync(S);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();

@@ -18,7 +18,9 @@
   }
 
   function normalize(o) {
-    return { tasks: Array.isArray(o && o.tasks) ? o.tasks : [], settings: Object.assign({}, DEFAULTS, o && o.settings) };
+    const r = o && o.routine;
+    return { tasks: Array.isArray(o && o.tasks) ? o.tasks : [], settings: Object.assign({}, DEFAULTS, o && o.settings),
+      routine: { items: Array.isArray(r && r.items) ? r.items : [], log: r && r.log && typeof r.log === 'object' ? r.log : {} } };
   }
 
   function createStore(storage) {
@@ -32,6 +34,21 @@
     const nextOrder = date => state.tasks.filter(t => t.date === date).reduce((m, t) => Math.max(m, t.order), -1) + 1;
     // Une tâche terminée reste visible jusqu'au changement de jour, puis passe à l'historique.
     const visible = (t, today) => !t.done || t.doneAt >= today;
+    const FREE_COLORS = ['bleu', 'vert', 'orange', 'violet', 'rose', 'jaune', 'rouge', 'gris'];
+    const activeItems = () => state.routine.items.filter(i => !i.archived).sort(byOrder);
+    const doneOn = (id, iso) => (state.routine.log[iso] || []).includes(id);
+    const gap = (a, b) => Math.round((P.toDate(a) - P.toDate(b)) / 86400000);
+
+    // Série : jours validés d'affilée en remontant. Un jour manqué est toléré, mais deux jours manqués
+    // à moins de 7 jours d'écart cassent la série. Aujourd'hui non validé n'est pas encore un jour manqué.
+    function streakOf(item, today) {
+      let d = doneOn(item.id, today) ? today : P.addDays(today, -1), count = 0, lastMiss = null;
+      for (let i = 0; i < 800 && d >= item.created; i++, d = P.addDays(d, -1)) {
+        if (doneOn(item.id, d)) count++;
+        else { if (lastMiss !== null && gap(lastMiss, d) < 7) break; lastMiss = d; }
+      }
+      return count;
+    }
 
     return {
       get tasks() { return state.tasks; },
@@ -113,6 +130,50 @@
         t.done = false; t.doneAt = null;
         if (t.date && t.date < todayOf(now)) { t.date = null; t.time = null; t.remindAt = null; }
         t.order = nextOrder(t.date); save(); return t;
+      },
+
+      // ---------- Routine ----------
+      routineItems() { return activeItems(); },
+      routineDone: doneOn,
+      addRoutine(name, color, now) {
+        name = (name || '').trim(); if (!name) return null;
+        const items = activeItems(), used = items.map(i => i.color);
+        const item = { id: uid(), name, color: color || FREE_COLORS.find(c => !used.includes(c)) || FREE_COLORS[items.length % 8],
+          order: state.routine.items.reduce((m, i) => Math.max(m, i.order), -1) + 1, created: todayOf(now), archived: false };
+        state.routine.items.push(item); save(); return item;
+      },
+      updateRoutine(id, patch) {
+        const i = state.routine.items.find(x => x.id === id); if (!i) return null;
+        if (patch.name && patch.name.trim()) i.name = patch.name.trim();
+        if (patch.color) i.color = patch.color;
+        save(); return i;
+      },
+      moveRoutine(id, dir) {
+        const l = activeItems(), k = l.findIndex(i => i.id === id), o = l[k + dir];
+        if (k < 0 || !o) return; [l[k].order, o.order] = [o.order, l[k].order]; save();
+      },
+      removeRoutine(id) { const i = state.routine.items.find(x => x.id === id); if (i) { i.archived = true; save(); } },   // données conservées
+      toggleRoutine(id, iso) {
+        const day = (state.routine.log[iso] || []).slice(), k = day.indexOf(id);
+        if (k >= 0) day.splice(k, 1); else day.push(id);
+        if (day.length) state.routine.log[iso] = day; else delete state.routine.log[iso];
+        save(); return k < 0;
+      },
+      routineStreak(id, now) { const i = state.routine.items.find(x => x.id === id); return i ? streakOf(i, todayOf(now)) : 0; },
+      routineTotal(id) { return Object.values(state.routine.log).filter(ids => ids.includes(id)).length; },
+      // 4 semaines (lundi -> dimanche), la dernière étant la semaine en cours.
+      routineGrid(now) {
+        const today = todayOf(now), items = activeItems();
+        const start = P.addDays(today, -((P.toDate(today).getDay() + 6) % 7) - 21), weeks = [];
+        for (let w = 0; w < 4; w++) {
+          const row = [];
+          for (let d = 0; d < 7; d++) {
+            const iso = P.addDays(start, w * 7 + d);
+            row.push({ date: iso, today: iso === today, future: iso > today, ids: items.filter(i => doneOn(i.id, iso)).map(i => i.id) });
+          }
+          weeks.push(row);
+        }
+        return weeks;
       },
 
       exportJSON() { return JSON.stringify(state, null, 2); },

@@ -15,14 +15,23 @@
 <body>
 <header>
   <h1 id="title">Agenda</h1>
-  <div class="dots" id="dots"><i class="on"></i><i></i></div>
+  <div class="dots" id="dots"><i class="on"></i><i></i><i></i></div>
   <button id="menuBtn" type="button" aria-label="Menu">⋯</button>
 </header>
 
 <main id="panes">
   <section class="pane" id="agenda"></section>
   <section class="pane"><ul class="list" id="undated"></ul></section>
+  <section class="pane" id="routine"></section>
 </main>
+
+<div id="keys" hidden>
+  <button type="button" data-k="&amp;">&amp;</button>
+  <button type="button" data-k="!">!</button>
+  <button type="button" data-k=":">:</button>
+  <button type="button" data-k="€">€</button>
+  <button type="button" data-k="close" aria-label="Fermer le clavier">⌄</button>
+</div>
 
 <form id="bar" autocomplete="off">
   <button type="button" id="cancel" aria-label="Annuler la modification" hidden>×</button>
